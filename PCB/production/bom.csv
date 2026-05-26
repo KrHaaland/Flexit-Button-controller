@@ -1,0 +1,9 @@
+﻿Designator,Footprint,Quantity,Value,LCSC Part #
+"C1, C2",0805,2,10uF,
+"D1, D2, D3, D4, D5",1206,5,LED,
+J1,Micromatch_2x6,1,MicroMatch_2x6,
+"R1, R2, R3, R4, R5",0805,5,R,
+"SW1, SW2, SW3, SW4, SW5",Tactile SW 6x6mm,5,Tactile SW 6x6mm,C5127964
+"TP1, TP2",TestPoint_Pad_1.5x1.5mm,2,TestPoint,
+"U1, U2, U3, U4, U5",AQY212S,5,AQY212S,
+U7,ESP32-C5Mini,1,~,
