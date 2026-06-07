@@ -704,32 +704,18 @@ static void handleNotFound() {
 }
 
 // ---- AP password helpers --------------------------------------------------
-// Generate a stable, per-device default AP password derived from the chip MAC.
-// 12 chars, alphanumeric (32-char alphabet, excluding I/O/0/1 to avoid OCR
-// confusion). Deterministic so the same chip always shows the same password;
-// the user can still override it in the web UI (stored under "ap_pass" in NVS).
-//
-// This trades pure secrecy for deterministic recovery: if you have the chip,
-// you can compute the default password without having captured a serial log.
-// Anyone *without* physical access can still only guess, so the public-repo
-// PSK problem (anyone reading the source knew the password) is gone.
-static String defaultApPassword() {
-  uint64_t mac = ESP.getEfuseMac();
-  // Mix the MAC bytes so the password isn't just a recoded MAC.
-  uint64_t mix = mac;
-  mix ^= (mix >> 17);
-  mix *= 0x9E3779B97F4A7C15ULL;
-  mix ^= (mix >> 31);
-  mix *= 0xC6BC279692B5C323ULL;
-  static const char alphabet[] =
-    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";  // 32 unambiguous chars
-  char buf[13];
-  for (int i = 0; i < 12; i++) {
-    buf[i] = alphabet[(mix >> (i * 5)) & 0x1F];
-  }
-  buf[12] = 0;
-  return String(buf);
-}
+// Default AP fallback password. Hardcoded for convenience — the user owns the
+// device and the deployment threat model (residential LAN) accepts this. The
+// per-device override (set via the Wi-Fi form, persisted as "ap_pass" in NVS)
+// still wins if set.
+static const char* AP_PASS_DEFAULT = "fibonacci";
+
+// NVS migration: when this constant is bumped, the boot-time loader will
+// overwrite the stored ap_pass with AP_PASS_DEFAULT once. Used to flip
+// devices from the previous per-device-random-PSK scheme back to "fibonacci".
+//   1 = (implicit) per-device random PSK era
+//   2 = "fibonacci" default era
+static constexpr uint8_t AP_PASS_SCHEMA_VERSION = 2;
 
 // ---- ArduinoOTA (PlatformIO `pio run -e ...-ota -t upload`) ---------------
 static bool arduinoOtaStarted = false;
@@ -857,12 +843,22 @@ void setup() {
                 mqttHost.isEmpty() ? "(disabled)" : mqttHost.c_str(),
                 mqttPort, mqttBase.c_str(), (unsigned)mqttPubIntervalSec);
 
-  // AP password: load from NVS, or generate a per-device default and persist.
+  // AP password: load from NVS. On firmware that bumped AP_PASS_SCHEMA_VERSION
+  // (e.g. switching defaults from the previous per-device-random scheme to
+  // the current "fibonacci" default), overwrite the stored value once so
+  // existing units pick up the new default. User-set overrides survive
+  // because the schema-bump runs only once per device.
+  uint8_t apPassSchemaVer = prefs.getUChar("ap_pass_v", 0);
+  if (apPassSchemaVer < AP_PASS_SCHEMA_VERSION) {
+    prefs.putString("ap_pass", AP_PASS_DEFAULT);
+    prefs.putUChar("ap_pass_v", AP_PASS_SCHEMA_VERSION);
+    Serial.printf("[wifi] AP password reset to default (schema v%u -> v%u)\n",
+                  (unsigned)apPassSchemaVer, (unsigned)AP_PASS_SCHEMA_VERSION);
+  }
   apPassword = prefs.getString("ap_pass", "");
   if (apPassword.length() < 8) {
-    apPassword = defaultApPassword();
+    apPassword = AP_PASS_DEFAULT;
     prefs.putString("ap_pass", apPassword);
-    Serial.println("[wifi] generated per-device AP password and saved to NVS");
   }
   Serial.printf("[wifi] AP fallback password: \"%s\"\n", apPassword.c_str());
 

@@ -54,7 +54,7 @@ The C5 enumerates as `/dev/ttyACM*` (built-in USB Serial JTAG, no driver needed)
 1. Power the ESP32-C5 over USB-C, or via the J1 connector once mounted.
 2. With no saved Wi-Fi, the board comes up as an access point:
    - SSID: `Flexit-Setup`
-   - Password: **per-device** — derived from the chip's eFuse MAC and printed to the USB serial console at every boot. Look for the line `[wifi] AP fallback password: "XXXXXXXXXXXX"`. The web UI also displays it next to the orange "AP" pill once you've joined.
+   - Password: `fibonacci` (default; the Wi-Fi form lets you set a custom one if you don't want the documented value).
 3. Join that AP and open <http://192.168.4.1/> (also reachable as `http://flexit.local/` via mDNS).
 4. In the **Wi-Fi** section, enter your home SSID + password and click *Save & reboot*. You can optionally set a custom AP fallback password in the same form — it persists in NVS. The board joins your network and is then reachable on its STA IP or via `flexit.local`.
 
@@ -140,7 +140,7 @@ The HTTP OTA path is hardened against the common failure modes:
 
 There's **no authentication** on either OTA path or on the other config endpoints. The assumption is that your Wi-Fi LAN is trusted (this is a home device behind your router, not on the open internet). Anyone with route to the device on TCP 80 or 3232 can re-flash it.
 
-The previous hardcoded AP fallback password (`fibonacci`, present in the source repo) has been replaced with a per-device password derived from the chip MAC and printed on the serial console, so an attacker reading this README no longer knows the PSK to every Flexit-Setup AP. They still need physical proximity *and* the specific chip's MAC.
+The AP fallback PSK is `fibonacci` by default — yes, the same one this README mentions, on purpose. The Wi-Fi form lets you override it per device if you'd rather not advertise it in the source. Override is persisted in NVS.
 
 If you need stricter controls (HTTP Basic auth on `/update`, an ArduinoOTA password, signed firmware images, broker ACLs, VLANs), open an issue.
 
