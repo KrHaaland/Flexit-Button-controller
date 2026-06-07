@@ -54,11 +54,13 @@ The C5 enumerates as `/dev/ttyACM*` (built-in USB Serial JTAG, no driver needed)
 1. Power the ESP32-C5 over USB-C, or via the J1 connector once mounted.
 2. With no saved Wi-Fi, the board comes up as an access point:
    - SSID: `Flexit-Setup`
-   - Password: `fibonacci`
-3. Join that AP and open <http://192.168.4.1/> (also reachable as `http://flexit.local/` via mDNS when on the same LAN).
-4. In the **Wi-Fi** section, enter your home SSID + password and click *Save & reboot*. The board joins your network and is then reachable on its STA IP, or via `flexit.local`.
+   - Password: **per-device** — derived from the chip's eFuse MAC and printed to the USB serial console at every boot. Look for the line `[wifi] AP fallback password: "XXXXXXXXXXXX"`. The web UI also displays it next to the orange "AP" pill once you've joined.
+3. Join that AP and open <http://192.168.4.1/> (also reachable as `http://flexit.local/` via mDNS).
+4. In the **Wi-Fi** section, enter your home SSID + password and click *Save & reboot*. You can optionally set a custom AP fallback password in the same form — it persists in NVS. The board joins your network and is then reachable on its STA IP or via `flexit.local`.
 
-Wi-Fi credentials are stored in the ESP32 NVS and survive a reflash. *Forget & reboot to AP* wipes them.
+Wi-Fi credentials and the AP-password override are stored in NVS and survive a reflash. *Forget & reboot to AP* wipes the Wi-Fi creds but keeps the AP password override.
+
+If the home network is briefly unreachable at boot, the board lands in AP mode but periodically retries (every 5 min) so a transient router outage doesn't strand it.
 
 ## Web interface
 
@@ -98,6 +100,49 @@ mqtt:
       command_topic: "flexit/sw/1/trigger"
     # ... repeat for 2..5
 ```
+
+## Firmware updates (OTA)
+
+Once the device is on your Wi-Fi (STA mode), you don't need USB again — there are two ways to push a new build:
+
+### Web upload
+
+1. Build locally: `cd FW/ESP32-C5-Flexit && pio run`. The artifact is `.pio/build/esp32-c5-devkitc1-n4/firmware.bin`.
+2. Open the device's web UI (`http://flexit.local/` or its STA IP).
+3. Scroll to the **Firmware** section. The current version, build timestamp and free slot space are shown.
+4. Pick the new `firmware.bin`, click **Upload & reboot**. The progress bar tracks the upload, then the board reboots into the new image. The page auto-reloads after ~8 s.
+
+### PlatformIO push
+
+```bash
+cd FW/ESP32-C5-Flexit
+pio run -e esp32-c5-devkitc1-n4-ota -t upload
+```
+
+This uses the espota protocol over mDNS at `flexit.local:3232`.
+
+### Partition layout
+
+Switched from the Arduino default (`default.csv`, 1.25 MB per app slot) to `min_spiffs.csv` (1.875 MB per slot, two slots, plus 128 KB SPIFFS). NVS stays at offset `0x9000` so saved Wi-Fi / MQTT / pulse settings survive the migration when you flash the OTA-enabled image for the first time.
+
+### Robustness
+
+The HTTP OTA path is hardened against the common failure modes:
+
+- The 5 button-trigger pins are forced LOW at the start of every upload, and `/trigger` + MQTT-fired triggers are ignored during the upload — a press in flight can't keep the opto-coupler latched through the multi-second multipart parse.
+- Idle timeout (10 s) and total timeout (120 s) abort slow-loris uploads.
+- A sticky abort flag short-circuits the rest of the upload as soon as `Update.begin`, a short write, or `Update.end` reports an error — no point in streaming 1 MB just to fail at the end.
+- MQTT publishes `offline` retained to `<base>/status` and disconnects gracefully before the reboot, so subscribers see the flap immediately instead of waiting out the 30 s keepalive.
+- Wi-Fi disconnect + `server.close()` + an 800 ms settle before `ESP.restart()` give the TCP FIN and the HTTP 200 response enough time to flush on a marginal link.
+- A Wi-Fi event handler re-binds mDNS and ArduinoOTA whenever the STA interface gets a new IP, so wireless reflash keeps working after a router reboot or AP roam.
+
+### Security model
+
+There's **no authentication** on either OTA path or on the other config endpoints. The assumption is that your Wi-Fi LAN is trusted (this is a home device behind your router, not on the open internet). Anyone with route to the device on TCP 80 or 3232 can re-flash it.
+
+The previous hardcoded AP fallback password (`fibonacci`, present in the source repo) has been replaced with a per-device password derived from the chip MAC and printed on the serial console, so an attacker reading this README no longer knows the PSK to every Flexit-Setup AP. They still need physical proximity *and* the specific chip's MAC.
+
+If you need stricter controls (HTTP Basic auth on `/update`, an ArduinoOTA password, signed firmware images, broker ACLs, VLANs), open an issue.
 
 ## Repo layout
 
