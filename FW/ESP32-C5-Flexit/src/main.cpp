@@ -9,7 +9,7 @@
 #include "index_html.h"
 
 // ---- Firmware identity ----------------------------------------------------
-#define FW_VERSION "0.2.0"
+#define FW_VERSION "0.2.1"
 #define FW_BUILD   __DATE__ " " __TIME__
 
 // ---- Pin mapping (from KiCad schematic) -----------------------------------
